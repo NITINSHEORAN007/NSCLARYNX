@@ -1,0 +1,7 @@
+{
+  "name": "Copy of NSCLARYNX - Hindi/English Speech AI",
+  "description": "A high-performance real-time speech-to-text and translation application supporting Hindi and English, powered by Gemini 2.5 Flash Native Audio.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
