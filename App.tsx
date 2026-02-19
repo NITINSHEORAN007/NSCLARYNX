@@ -60,6 +60,7 @@ const App: React.FC = () => {
     if (v === 'Narrator') return 'Charon';
     if (v === 'Anchor') return 'Zephyr';
     if (v === 'Vlogger') return 'Kore';
+    if (v === 'Clone') return 'Fenrir'; // Default for clone synth if not in live
     return v;
   };
 
@@ -86,8 +87,8 @@ const App: React.FC = () => {
       sessionRef.current = null;
     }
     setIsActive(false);
-    if (audioContextRef.current) audioContextRef.current.close();
-    if (outputAudioContextRef.current) outputAudioContextRef.current.close();
+    if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+    if (outputAudioContextRef.current) outputAudioContextRef.current.close().catch(() => {});
     
     sourcesRef.current.forEach(s => {
       try { s.stop(); } catch(e) {}
@@ -245,7 +246,8 @@ const App: React.FC = () => {
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           speechConfig: {
-            voiceConfig: voice === 'Clone' ? undefined : { voiceConfig: { prebuiltVoiceConfig: { voiceName: getPrebuiltVoiceName(voice) as any } } }
+            // FIXED: Removed invalid nested voiceConfig property
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: getPrebuiltVoiceName(voice) as any } }
           }
         },
         callbacks: {
@@ -294,8 +296,8 @@ const App: React.FC = () => {
         }
       });
       sessionRef.current = await sessionPromise;
-    } catch (err) {
-      setError('Connection failed.');
+    } catch (err: any) {
+      setError(`Connection failed: ${err.message || 'Unknown Error'}`);
     }
   };
 
@@ -306,28 +308,20 @@ const App: React.FC = () => {
     setError(null);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      let contents: any[] = [];
-      let modelToUse = "gemini-2.5-flash-preview-tts";
+      const promptText = `High Fidelity Speech. ${getVocalInstruction()}. Read the following text: ${scriptText}`;
 
-      if (voice === 'Clone' && clonedVoiceBase64) {
-        modelToUse = "gemini-2.5-flash-native-audio-preview-12-2025";
-        contents = [{
-          parts: [
-            { inlineData: { data: clonedVoiceBase64, mimeType: 'audio/webm' } },
-            { text: `Mimicry Synth. Clear Speech. ${getVocalInstruction()}. Read: ${scriptText}` }
-          ]
-        }];
-      } else {
-        contents = [{ parts: [{ text: `High Fidelity Speech. ${getVocalInstruction()}. Read: ${scriptText}` }] }];
-      }
-
+      // FIXED: Using stable TTS model for synthesis to prevent failures during direct generateContent calls
       const response = await ai.models.generateContent({
-        model: modelToUse,
-        contents,
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: promptText }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: voice === 'Clone' ? undefined : {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: getPrebuiltVoiceName(voice) as any } }
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: getPrebuiltVoiceName(voice) as any
+              }
+            }
           }
         }
       });
@@ -344,9 +338,11 @@ const App: React.FC = () => {
         sourceNode.connect(audioCtx.destination);
         sourceNode.start();
         sourcesRef.current.add(sourceNode);
+      } else {
+        setError('Synthesis yielded no audio data.');
       }
-    } catch (err) {
-      setError('Synthesis failed.');
+    } catch (err: any) {
+      setError(`Synthesis failed: ${err.message || 'API Error'}`);
     } finally {
       setIsGeneratingTTS(false);
     }

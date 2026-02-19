@@ -24,7 +24,9 @@ export async function decodeAudioData(
   sampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
+  // Ensure the byte length is a multiple of 2 for Int16Array
+  const byteLength = data.byteLength - (data.byteLength % 2);
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, byteLength / 2);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
@@ -51,6 +53,16 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
   let offset = 0;
   let pos = 0;
 
+  function setUint16(data: number) {
+    view.setUint16(pos, data, true);
+    pos += 2;
+  }
+
+  function setUint32(data: number) {
+    view.setUint32(pos, data, true);
+    pos += 4;
+  }
+
   // write WAVE header
   setUint32(0x46464952); // "RIFF"
   setUint32(length - 8); // file length - 8
@@ -73,7 +85,7 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
     channels.push(buffer.getChannelData(i));
   }
 
-  while (pos < length) {
+  while (pos < length && offset < buffer.length) {
     for (i = 0; i < numOfChan; i++) {
       // interleave channels
       sample = Math.max(-1, Math.min(1, channels[i][offset])); // clamp
@@ -85,14 +97,4 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
   }
 
   return new Blob([out], { type: 'audio/wav' });
-
-  function setUint16(data: number) {
-    view.setUint16(pos, data, true);
-    pos += 2;
-  }
-
-  function setUint32(data: number) {
-    view.setUint32(pos, data, true);
-    pos += 4;
-  }
 }
